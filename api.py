@@ -1,6 +1,6 @@
+from datetime import datetime
 import os
 import tempfile
-import datetime
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from moviepy.editor import VideoFileClip
@@ -16,49 +16,54 @@ def remove_file(path: str):
 @app.post("/compress-video")
 async def compress_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     try:
-        start = datetime.datetime.now()
-        print(start)
-        # Сохраняем исходное видео во временный файл
+        start = datetime.now()
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_input:
             input_path = temp_input.name
             content = await file.read()
             temp_input.write(content)
         
-        # Создаем временный файл для сжатого видео
         output_fd, output_path = tempfile.mkstemp(suffix="_compressed.mp4")
         os.close(output_fd)
         
-        # Открываем видео с помощью MoviePy
         clip = VideoFileClip(input_path)
+        original_height, original_width = clip.size
+
         
-        # Пример сжатия: изменение разрешения (например, до 480p) и уменьшение битрейта
-        # Можно настроить эти параметры под свои задачи
-        clip_resized = clip.resize(height=480)
+        # max_dimension = 1280
+
+        # if original_width >= original_height:
+        #     new_width = max_dimension
+        #     new_height = int(original_height * (max_dimension / original_width))
+        # else:
+        #     new_height = max_dimension
+        #     new_width = int(original_width * (max_dimension / original_height))
+
+        # print(original_height, original_width)
+        # print(new_height, new_width)
         
-        # Сохраняем сжатое видео
-        clip_resized.write_videofile(
+        # clip_resized = clip.resize(newsize=(new_width, new_height))
+        
+        clip.write_videofile(
             output_path,
             codec="libx264",
-            preset="veryfast",
-            bitrate="400k",      # Указываем битрейт для контроля размера и качества
+            ffmpeg_params=["-crf", "23"],
+            bitrate="400k",  
+            preset="slow",
             audio_codec="aac",
             threads=8,
         )
         
-        # Закрываем клипы
-        clip_resized.close()
+        # clip_resized.close()
         clip.close()
         
-        # Удаляем временный входной файл в фоне
         background_tasks.add_task(remove_file, input_path)
-        # Обратите внимание: выходной файл будет удалён после того, как FileResponse отправит его клиенту.
         background_tasks.add_task(remove_file, output_path)
 
-        end = datetime.datetime.now()
+        end = datetime.now()
+        print("compression time", end - start)
+        print(clip.size)
 
-        print(start)        
-        print(end)
-        print(end - start)
         return FileResponse(
             path=output_path,
             media_type="video/mp4",
